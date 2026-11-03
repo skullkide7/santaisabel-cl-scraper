@@ -44,19 +44,30 @@ def _client():
     return session, url
 
 
-def _upsert(session, url, table, rows, on_conflict, batch=500):
+def _upsert(session, url, table, rows, on_conflict, batch=500, tries=10):
     total = 0
     for i in range(0, len(rows), batch):
         chunk = rows[i:i + batch]
-        resp = session.post(
-            f"{url}/rest/v1/{table}?on_conflict={on_conflict}",
-            data=json.dumps(chunk),
-            timeout=60,
-        )
-        if resp.status_code not in (200, 201):
-            sys.exit(f"upsert {table} fallo: HTTP {resp.status_code} {resp.text[:300]}")
+        last = None
+        for attempt in range(tries):
+            try:
+                resp = session.post(
+                    f"{url}/rest/v1/{table}?on_conflict={on_conflict}",
+                    data=json.dumps(chunk),
+                    timeout=120,
+                )
+            except requests.RequestException as exc:
+                last = str(exc)
+            else:
+                if resp.status_code in (200, 201):
+                    break
+                last = f"HTTP {resp.status_code} {resp.text[:200]}"
+            time.sleep(min(2 ** attempt, 30))
+        else:
+            sys.exit(f"upsert {table} fallo tras {tries} intentos en fila "
+                     f"{i} (reanuda con --skip {i}): {last}")
         total += len(chunk)
-        print(f"  {table}: {total}/{len(rows)}")
+        print(f"  {table}: {total}/{len(rows)}", flush=True)
         time.sleep(0.2)
     return total
 
