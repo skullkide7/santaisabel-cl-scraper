@@ -31,6 +31,9 @@ python scrape_catalog.py --limit-categories 2 --max-pages 1
 # Corrida completa (~1-2 h, escribe data/*.gz)
 python scrape_catalog.py
 
+# Pruebas
+python -m unittest
+
 # Cargar a Supabase (proyecto nuevo con schema.sql aplicado)
 python upload_to_supabase.py --dry-run
 export SUPABASE_URL="https://<ref>.supabase.co"

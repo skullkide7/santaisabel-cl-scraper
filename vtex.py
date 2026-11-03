@@ -313,74 +313,88 @@ def scrape_chain(config, out_dir, limit_categories=None, limit_products=None,
     with gzip.open(prices_path, "wt", encoding="utf-8", newline="") as fh:
         writer = csv.DictWriter(fh, fieldnames=PRICE_COLUMNS)
         writer.writeheader()
+        failed = []
         for cat_fq, cat_path in leaves:
             start, pages = 0, 0
-            while True:
-                # VTEX rechaza _to >= 50: paginas de 0-49, 50-99, ...
-                products = client.search_category(
-                    cat_fq, start, start + PAGE_SIZE - 1)
-                if not products:
-                    break
-                for product in products:
-                    pid = str(product.get("productId"))
-                    if pid in seen_products:
-                        continue
-                    seen_products.add(pid)
-                    rows, _ = parse_product(product, config["image_host"])
-                    for row in rows:
-                        if row["ean"] in seen_eans:
+            try:
+                while True:
+                    # VTEX rechaza _to >= 50: paginas de 0-49, 50-99, ...
+                    products = client.search_category(
+                        cat_fq, start, start + PAGE_SIZE - 1)
+                    if not products:
+                        break
+                    for product in products:
+                        pid = str(product.get("productId"))
+                        if pid in seen_products:
                             continue
-                        seen_eans.add(row["ean"])
-                        n_skus += 1
-                        if limit_products and n_skus > limit_products:
+                        seen_products.add(pid)
+                        rows, _ = parse_product(product, config["image_host"])
+                        for row in rows:
+                            if row["ean"] in seen_eans:
+                                continue
+                            seen_eans.add(row["ean"])
+                            n_skus += 1
+                            if limit_products and n_skus > limit_products:
+                                break
+                            for store in stores:
+                                writer.writerow(
+                                    {
+                                        "ean": row["ean"],
+                                        "country_code": COUNTRY_CODE,
+                                        "region_id": store["region_id"],
+                                        "city_id": store["city_id"],
+                                        "store_id": store["id"],
+                                        "chain_id": config["chain_id"],
+                                        "price": row["price"],
+                                        "promo_price": row["promo_price"] or "",
+                                        "currency": CURRENCY,
+                                        "stock": str(row["stock"]).lower(),
+                                        "stock_quantity": row["stock_quantity"],
+                                        "last_updated": stamped,
+                                        "source": source,
+                                        "product_name": row["product_name"],
+                                        "description": row["description"],
+                                        "brand": row["brand"] or "",
+                                        "image_url": row["image_url"] or "",
+                                        "category_path": (
+                                            row["category_path"] or ""
+                                        ),
+                                        "measurement_unit": (
+                                            row["measurement_unit"] or ""
+                                        ),
+                                        "unit_multiplier": (
+                                            row["unit_multiplier"]
+                                            if row["unit_multiplier"] not in
+                                            (None, "") else ""
+                                        ),
+                                        "promotion_names": (
+                                            row["promotion_names"] or ""
+                                        ),
+                                    }
+                                )
+                                n_rows += 1
+                        if limit_products and n_skus >= limit_products:
                             break
-                        for store in stores:
-                            writer.writerow(
-                                {
-                                    "ean": row["ean"],
-                                    "country_code": COUNTRY_CODE,
-                                    "region_id": store["region_id"],
-                                    "city_id": store["city_id"],
-                                    "store_id": store["id"],
-                                    "chain_id": config["chain_id"],
-                                    "price": row["price"],
-                                    "promo_price": row["promo_price"] or "",
-                                    "currency": CURRENCY,
-                                    "stock": str(row["stock"]).lower(),
-                                    "stock_quantity": row["stock_quantity"],
-                                    "last_updated": stamped,
-                                    "source": source,
-                                    "product_name": row["product_name"],
-                                    "description": row["description"],
-                                    "brand": row["brand"] or "",
-                                    "image_url": row["image_url"] or "",
-                                    "category_path": row["category_path"] or "",
-                                    "measurement_unit": (
-                                        row["measurement_unit"] or ""
-                                    ),
-                                    "unit_multiplier": (
-                                        row["unit_multiplier"]
-                                        if row["unit_multiplier"] not in
-                                        (None, "") else ""
-                                    ),
-                                    "promotion_names": (
-                                        row["promotion_names"] or ""
-                                    ),
-                                }
-                            )
-                            n_rows += 1
                     if limit_products and n_skus >= limit_products:
                         break
-                if limit_products and n_skus >= limit_products:
-                    break
-                pages += 1
-                if max_pages and pages >= max_pages:
-                    break
-                if len(products) < PAGE_SIZE:
-                    break
-                start += PAGE_SIZE
+                    pages += 1
+                    if max_pages and pages >= max_pages:
+                        break
+                    if len(products) < PAGE_SIZE:
+                        break
+                    start += PAGE_SIZE
+            except RuntimeError as exc:
+                # Una categoria con error (ej. HTTP 500 de VTEX) se omite
+                # y la corrida sigue con las demas.
+                failed.append(cat_path)
+                print(f"[{config['chain_id']}] AVISO: categoria omitida "
+                      f"{cat_path}: {exc}")
+                continue
             if limit_products and n_skus >= limit_products:
                 break
     print(f"[{config['chain_id']}] {n_skus} SKUs x {len(stores)} locales "
           f"= {n_rows} filas -> {prices_path}")
+    if failed:
+        print(f"[{config['chain_id']}] AVISO: {len(failed)} categorias "
+              f"omitidas por error: {', '.join(failed[:10])}")
     return len(stores), n_skus, n_rows
