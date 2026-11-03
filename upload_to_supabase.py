@@ -87,6 +87,11 @@ def main():
     parser.add_argument("--dry-run", action="store_true")
     parser.add_argument("--skip-stores", action="store_true")
     parser.add_argument("--skip-prices", action="store_true")
+    # Para reanudar o paralelizar: --skip salta las primeras N filas de
+    # precios y --max-rows limita cuantas se suben (el upsert es
+    # idempotente, re-subir es seguro).
+    parser.add_argument("--skip", type=int, default=0)
+    parser.add_argument("--max-rows", type=int, default=None)
     args = parser.parse_args()
 
     stores_path = os.path.join(args.data_dir, "retailer_stores.json")
@@ -116,11 +121,18 @@ def main():
         print("subiendo locales...")
         _upsert(session, url, "retailer_stores", stores, "id", args.batch)
     if not args.skip_prices:
-        print(f"subiendo {os.path.basename(prices_path)}...")
+        print(f"subiendo {os.path.basename(prices_path)} "
+              f"(skip={args.skip}, max={args.max_rows})...")
         rows = []
         with _open_csv(prices_path) as fh:
-            for row in csv.DictReader(fh):
+            reader = csv.DictReader(fh)
+            for i, row in enumerate(reader):
+                if i < args.skip:
+                    continue
+                if args.max_rows is not None and len(rows) >= args.max_rows:
+                    break
                 rows.append(_clean_price_row(row))
+        print(f"  {len(rows)} filas a subir")
         _upsert(session, url, "product_prices", rows, "ean,store_id", args.batch)
     print("carga completa")
 
