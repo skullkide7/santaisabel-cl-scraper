@@ -80,10 +80,17 @@ class VTEXClient:
         ).json()
 
     def fetch_page(self, url):
-        resp = self.session.get(url, timeout=self.timeout)
-        resp.raise_for_status()
-        time.sleep(self.delay)
-        return resp.text
+        last = None
+        for attempt in range(4):
+            try:
+                resp = self.session.get(url, timeout=self.timeout)
+                resp.raise_for_status()
+                time.sleep(self.delay)
+                return resp.text
+            except requests.RequestException as exc:
+                last = str(exc)
+            time.sleep(self.delay * (2 ** attempt) + 0.5)
+        raise RuntimeError(f"GET {url} fallo tras 4 intentos: {last}")
 
 
 def leaf_categories(tree, prefix="", ids=""):
