@@ -176,6 +176,34 @@ def parse_localities(html_text, chain_id, chain_name):
     return stores
 
 
+def online_store(config):
+    """Tienda virtual para el modelo slim.
+
+    El precio VTEX es unico por cadena, asi que en modo slim las filas de
+    precios referencian esta tienda y los locales fisicos se usan solo
+    para proximidad (misma info, ~1/100 de las filas).
+    """
+    chain_id = config["chain_id"]
+    chain_name = config["chain_name"]
+    return {
+        "id": f"CL_{chain_id}_online",
+        "chain_id": chain_id,
+        "chain_name": chain_name,
+        "country_code": COUNTRY_CODE,
+        "region_id": None,
+        "city_id": None,
+        "country_name": COUNTRY_NAME,
+        "region_name": None,
+        "city_name": None,
+        "name": f"{chain_name} Online",
+        "address": "Tienda online",
+        "lat": None,
+        "lon": None,
+        "category": "online",
+        "is_active": True,
+    }
+
+
 def _sku_offer(item):
     sellers = item.get("sellers") or []
     if not sellers:
@@ -277,11 +305,12 @@ PRICE_COLUMNS = [
 
 
 def scrape_chain(config, out_dir, limit_categories=None, limit_products=None,
-                 max_pages=None, delay=0.35):
+                 max_pages=None, delay=0.35, slim=False):
     """Barrido completo de la cadena. Devuelve (n_stores, n_skus, n_rows).
 
     Escribe data/retailer_stores.json y data/prices.csv.gz con una fila
-    por (ean, tienda).
+    por (ean, tienda); con slim=True, una fila por ean contra la tienda
+    virtual CL_<cadena>_online (mismo precio, sin cartesiano).
     """
     import os
 
@@ -295,6 +324,10 @@ def scrape_chain(config, out_dir, limit_categories=None, limit_products=None,
     stores = parse_localities(html_text, config["chain_id"], config["chain_name"])
     if not stores:
         raise RuntimeError("no se encontraron locales en /locales")
+    price_stores = stores
+    if slim:
+        price_stores = [online_store(config)]
+        stores = stores + price_stores
     stores_path = os.path.join(out_dir, "retailer_stores.json")
     with open(stores_path, "w", encoding="utf-8") as fh:
         json.dump(stores, fh, ensure_ascii=False, indent=1)
@@ -336,7 +369,7 @@ def scrape_chain(config, out_dir, limit_categories=None, limit_products=None,
                             n_skus += 1
                             if limit_products and n_skus > limit_products:
                                 break
-                            for store in stores:
+                            for store in price_stores:
                                 writer.writerow(
                                     {
                                         "ean": row["ean"],
@@ -392,8 +425,8 @@ def scrape_chain(config, out_dir, limit_categories=None, limit_products=None,
                 continue
             if limit_products and n_skus >= limit_products:
                 break
-    print(f"[{config['chain_id']}] {n_skus} SKUs x {len(stores)} locales "
-          f"= {n_rows} filas -> {prices_path}")
+    print(f"[{config['chain_id']}] {n_skus} SKUs x {len(price_stores)} "
+          f"tiendas = {n_rows} filas -> {prices_path}")
     if failed:
         print(f"[{config['chain_id']}] AVISO: {len(failed)} categorias "
               f"omitidas por error: {', '.join(failed[:10])}")

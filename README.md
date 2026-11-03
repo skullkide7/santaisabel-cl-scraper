@@ -31,6 +31,10 @@ python scrape_catalog.py --limit-categories 2 --max-pages 1
 # Corrida completa (~1-2 h, escribe data/*.gz)
 python scrape_catalog.py
 
+# Corrida slim (recomendada: 1 fila por EAN contra la tienda virtual
+# CL_santaisabel_online, mismos precios, ~1/195 de las filas)
+python scrape_catalog.py --slim
+
 # Pruebas
 python -m unittest
 

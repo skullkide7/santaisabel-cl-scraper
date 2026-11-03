@@ -29,6 +29,8 @@ def main():
     parser.add_argument("--limit-products", type=int, default=None)
     parser.add_argument("--max-pages", type=int, default=None)
     parser.add_argument("--delay", type=float, default=0.35)
+    parser.add_argument("--slim", action="store_true",
+                        help="una fila por EAN (tienda virtual online)")
     args = parser.parse_args()
     scrape_chain(
         CONFIG,
@@ -37,6 +39,7 @@ def main():
         limit_products=args.limit_products,
         max_pages=args.max_pages,
         delay=args.delay,
+        slim=args.slim,
     )
 
 

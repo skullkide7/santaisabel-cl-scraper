@@ -91,13 +91,34 @@ class ScraperTests(unittest.TestCase):
                               side_effect=search):
                 n_stores, n_skus, n_rows = vtex.scrape_chain(
                     CONFIG, tmp, delay=0)
-        self.assertEqual((n_stores, n_skus, n_rows), (1, 1, 1))
-        with gzip.open(os.path.join(tmp, "prices.csv.gz"), "rt") as fh:
-            rows = list(csv.DictReader(fh))
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["ean"], "780000000001")
-        self.assertEqual(rows[0]["price"], "150.0")
-        self.assertEqual(rows[0]["promo_price"], "100.0")
+                self.assertEqual((n_stores, n_skus, n_rows), (1, 1, 1))
+                with gzip.open(os.path.join(tmp, "prices.csv.gz"), "rt") as fh:
+                    rows = list(csv.DictReader(fh))
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0]["ean"], "780000000001")
+                self.assertEqual(rows[0]["price"], "150.0")
+                self.assertEqual(rows[0]["promo_price"], "100.0")
+
+    def test_slim_mode_writes_one_row_per_ean(self):
+        def search(fq, start, end):
+            return [PRODUCT] if start == 0 else []
+
+        with tempfile.TemporaryDirectory() as tmp:
+            with patch.object(vtex.VTEXClient, "fetch_page",
+                              return_value=LOCALES_HTML), \
+                 patch.object(vtex.VTEXClient, "category_tree",
+                              return_value=TREE), \
+                 patch.object(vtex.VTEXClient, "search_category",
+                              side_effect=search):
+                n_stores, n_skus, n_rows = vtex.scrape_chain(
+                    CONFIG, tmp, delay=0, slim=True)
+                self.assertEqual((n_stores, n_skus, n_rows), (2, 1, 1))
+                with gzip.open(os.path.join(tmp, "prices.csv.gz"), "rt") as fh:
+                    rows = list(csv.DictReader(fh))
+                self.assertEqual(len(rows), 1)
+                self.assertEqual(rows[0]["store_id"], "CL_test_online")
+                self.assertEqual(rows[0]["region_id"], "")
+                self.assertEqual(rows[0]["city_id"], "")
 
 
 if __name__ == "__main__":
